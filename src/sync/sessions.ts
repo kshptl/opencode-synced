@@ -27,7 +27,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 import type { PluginInput } from '@opencode-ai/plugin';
-import type { Message, Part, Session } from '@opencode-ai/sdk';
+import type { AssistantMessage, Message, Part, Session } from '@opencode-ai/sdk';
 
 import type { NormalizedSyncConfig, SessionManifestEntry, SessionSyncConfig } from './config.js';
 import { unwrapData } from './utils.js';
@@ -318,6 +318,55 @@ interface ExportFormat {
 }
 
 /**
+ * Rewrites absolute paths in session and message data so imported sessions
+ * are visible under the local project directory.
+ *
+ * When pushing from macOS (/Users/X/project) and pulling on Linux
+ * (/home/X/project), the session.directory and every AssistantMessage's
+ * path.cwd / path.root are updated by replacing the source prefix with the
+ * local project directory.
+ *
+ * If the directory already matches, the original objects are returned as-is.
+ */
+function rewriteSessionPaths(
+  session: Session,
+  messages: MessageExport[],
+  localDirectory: string
+): { session: Session; messages: MessageExport[] } {
+  const sourceDir = session.directory;
+
+  // Nothing to do if the directories already match.
+  if (sourceDir === localDirectory) {
+    return { session, messages };
+  }
+
+  const rewrite = (p: string): string =>
+    p.startsWith(sourceDir) ? localDirectory + p.slice(sourceDir.length) : p;
+
+  const rewrittenSession: Session = { ...session, directory: localDirectory };
+
+  const rewrittenMessages: MessageExport[] = messages.map((msg) => {
+    if (msg.info.role !== 'assistant') return msg;
+
+    const am = msg.info as AssistantMessage;
+    if (!am.path) return msg;
+
+    return {
+      ...msg,
+      info: {
+        ...am,
+        path: {
+          cwd: rewrite(am.path.cwd),
+          root: rewrite(am.path.root),
+        },
+      } as AssistantMessage,
+    };
+  });
+
+  return { session: rewrittenSession, messages: rewrittenMessages };
+}
+
+/**
  * Checks whether a session already exists locally.
  */
 async function sessionExistsLocally(client: Client, sessionId: string): Promise<boolean> {
@@ -332,14 +381,22 @@ async function sessionExistsLocally(client: Client, sessionId: string): Promise<
 
 /**
  * Imports a single session by writing to a temp file and invoking `opencode import`.
+ * Rewrites absolute paths so the session is visible under localDirectory.
  * The temp file is always cleaned up.
  */
 async function importSession(
   session: Session,
   messages: MessageExport[],
+  localDirectory: string,
   log: (msg: string) => void
 ): Promise<void> {
-  const exportData: ExportFormat = { info: session, messages };
+  const { session: rewrittenSession, messages: rewrittenMessages } = rewriteSessionPaths(
+    session,
+    messages,
+    localDirectory
+  );
+
+  const exportData: ExportFormat = { info: rewrittenSession, messages: rewrittenMessages };
   const json = JSON.stringify(exportData);
 
   // Secure temp file: random UUID name in the system temp dir.
@@ -381,12 +438,14 @@ async function readSessionMeta(repoRoot: string, sessionId: string): Promise<Ses
 /**
  * Import sessions from the sync repo that are missing locally.
  * Append-only: sessions that already exist locally are never modified.
+ * Paths are rewritten to match localDirectory for cross-platform compatibility.
  *
  * Returns the number of sessions successfully imported.
  */
 export async function importSessionsFromRepo(
   client: Client,
   repoRoot: string,
+  localDirectory: string,
   log: (msg: string) => void
 ): Promise<number> {
   const manifest = await readManifest(repoRoot);
@@ -432,7 +491,7 @@ export async function importSessionsFromRepo(
     }
 
     try {
-      await importSession(sessionMeta, messages, log);
+      await importSession(sessionMeta, messages, localDirectory, log);
       imported++;
     } catch (err) {
       // Log and continue — one failing session must not block others.

@@ -1,5 +1,5 @@
 import type { PluginInput } from '@opencode-ai/plugin';
-type SyncServiceContext = Pick<PluginInput, 'client' | '$'>;
+type SyncServiceContext = Pick<PluginInput, 'client' | '$' | 'directory'>;
 interface InitOptions {
     repo?: string;
     owner?: string;

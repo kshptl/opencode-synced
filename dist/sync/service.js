@@ -331,7 +331,7 @@ export function createSyncService(ctx) {
             await runSecretsPullIfConfigured(config);
             if (config.includeSessions) {
                 try {
-                    const importedCount = await importSessionsFromRepo(ctx.client, repoRoot, (msg) => log.info(msg));
+                    const importedCount = await importSessionsFromRepo(ctx.client, repoRoot, ctx.directory, (msg) => log.info(msg));
                     if (importedCount > 0) {
                         log.info(`Imported ${importedCount} session(s) from sync repo.`);
                     }
@@ -508,7 +508,7 @@ async function runStartup(ctx, locations, config, log, options) {
         await options.runSecretsPullIfConfigured(config);
         if (config.includeSessions) {
             try {
-                const importedCount = await importSessionsFromRepo(ctx.client, repoRoot, (msg) => log.info(msg));
+                const importedCount = await importSessionsFromRepo(ctx.client, repoRoot, ctx.directory, (msg) => log.info(msg));
                 if (importedCount > 0) {
                     log.info(`Imported ${importedCount} session(s) from sync repo.`);
                 }

@@ -34,8 +34,9 @@ export declare function exportSessionsToRepo(client: Client, repoRoot: string, c
 /**
  * Import sessions from the sync repo that are missing locally.
  * Append-only: sessions that already exist locally are never modified.
+ * Paths are rewritten to match localDirectory for cross-platform compatibility.
  *
  * Returns the number of sessions successfully imported.
  */
-export declare function importSessionsFromRepo(client: Client, repoRoot: string, log: (msg: string) => void): Promise<number>;
+export declare function importSessionsFromRepo(client: Client, repoRoot: string, localDirectory: string, log: (msg: string) => void): Promise<number>;
 export {};

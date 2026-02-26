@@ -238,6 +238,44 @@ export async function exportSessionsToRepo(client, repoRoot, config) {
     return manifest;
 }
 /**
+ * Rewrites absolute paths in session and message data so imported sessions
+ * are visible under the local project directory.
+ *
+ * When pushing from macOS (/Users/X/project) and pulling on Linux
+ * (/home/X/project), the session.directory and every AssistantMessage's
+ * path.cwd / path.root are updated by replacing the source prefix with the
+ * local project directory.
+ *
+ * If the directory already matches, the original objects are returned as-is.
+ */
+function rewriteSessionPaths(session, messages, localDirectory) {
+    const sourceDir = session.directory;
+    // Nothing to do if the directories already match.
+    if (sourceDir === localDirectory) {
+        return { session, messages };
+    }
+    const rewrite = (p) => p.startsWith(sourceDir) ? localDirectory + p.slice(sourceDir.length) : p;
+    const rewrittenSession = { ...session, directory: localDirectory };
+    const rewrittenMessages = messages.map((msg) => {
+        if (msg.info.role !== 'assistant')
+            return msg;
+        const am = msg.info;
+        if (!am.path)
+            return msg;
+        return {
+            ...msg,
+            info: {
+                ...am,
+                path: {
+                    cwd: rewrite(am.path.cwd),
+                    root: rewrite(am.path.root),
+                },
+            },
+        };
+    });
+    return { session: rewrittenSession, messages: rewrittenMessages };
+}
+/**
  * Checks whether a session already exists locally.
  */
 async function sessionExistsLocally(client, sessionId) {
@@ -252,10 +290,12 @@ async function sessionExistsLocally(client, sessionId) {
 }
 /**
  * Imports a single session by writing to a temp file and invoking `opencode import`.
+ * Rewrites absolute paths so the session is visible under localDirectory.
  * The temp file is always cleaned up.
  */
-async function importSession(session, messages, log) {
-    const exportData = { info: session, messages };
+async function importSession(session, messages, localDirectory, log) {
+    const { session: rewrittenSession, messages: rewrittenMessages } = rewriteSessionPaths(session, messages, localDirectory);
+    const exportData = { info: rewrittenSession, messages: rewrittenMessages };
     const json = JSON.stringify(exportData);
     // Secure temp file: random UUID name in the system temp dir.
     const tmpFile = path.join(os.tmpdir(), `opencode-sync-import-${crypto.randomUUID()}.json`);
@@ -294,10 +334,11 @@ async function readSessionMeta(repoRoot, sessionId) {
 /**
  * Import sessions from the sync repo that are missing locally.
  * Append-only: sessions that already exist locally are never modified.
+ * Paths are rewritten to match localDirectory for cross-platform compatibility.
  *
  * Returns the number of sessions successfully imported.
  */
-export async function importSessionsFromRepo(client, repoRoot, log) {
+export async function importSessionsFromRepo(client, repoRoot, localDirectory, log) {
     const manifest = await readManifest(repoRoot);
     const sessionIds = Object.keys(manifest);
     if (sessionIds.length === 0)
@@ -332,7 +373,7 @@ export async function importSessionsFromRepo(client, repoRoot, log) {
             continue;
         }
         try {
-            await importSession(sessionMeta, messages, log);
+            await importSession(sessionMeta, messages, localDirectory, log);
             imported++;
         }
         catch (err) {

@@ -49,7 +49,7 @@ import {
   unwrapData,
 } from './utils.js';
 
-type SyncServiceContext = Pick<PluginInput, 'client' | '$'>;
+type SyncServiceContext = Pick<PluginInput, 'client' | '$' | 'directory'>;
 type Logger = ReturnType<typeof createLogger>;
 type Shell = PluginInput['$'];
 
@@ -487,8 +487,11 @@ export function createSyncService(ctx: SyncServiceContext): SyncService {
 
         if (config.includeSessions) {
           try {
-            const importedCount = await importSessionsFromRepo(ctx.client, repoRoot, (msg) =>
-              log.info(msg)
+            const importedCount = await importSessionsFromRepo(
+              ctx.client,
+              repoRoot,
+              ctx.directory,
+              (msg) => log.info(msg)
             );
             if (importedCount > 0) {
               log.info(`Imported ${importedCount} session(s) from sync repo.`);
@@ -720,8 +723,11 @@ async function runStartup(
 
     if (config.includeSessions) {
       try {
-        const importedCount = await importSessionsFromRepo(ctx.client, repoRoot, (msg) =>
-          log.info(msg)
+        const importedCount = await importSessionsFromRepo(
+          ctx.client,
+          repoRoot,
+          ctx.directory,
+          (msg) => log.info(msg)
         );
         if (importedCount > 0) {
           log.info(`Imported ${importedCount} session(s) from sync repo.`);
