@@ -2,11 +2,13 @@
 
 Sync global opencode configuration across machines via a GitHub repo, with optional secrets support for private repos.
 
+> **This is a community fork** of [iHildy/opencode-synced](https://github.com/iHildy/opencode-synced) that fixes session sync and adds several improvements. See [What this fork adds](#what-this-fork-adds) and [Installing from this fork](#installing-from-this-fork).
+
 ## Features
 
 - Syncs global opencode config (`~/.config/opencode`) and related directories
 - Optional secrets sync when the repo is private
-- Optional session sync to share conversation history across machines
+- Optional session sync to share conversation history across machines (fixed for OpenCode SQLite backend)
 - Optional prompt stash sync to share stashed prompts and history across machines
 - Startup auto-sync with restart toast
 - Per-machine overrides via `opencode-synced.overrides.jsonc`
@@ -16,6 +18,123 @@ Sync global opencode configuration across machines via a GitHub repo, with optio
 
 - GitHub CLI (`gh`) installed and authenticated (`gh auth login`)
 - Git installed and available on PATH
+
+## What this fork adds
+
+The published `opencode-synced@0.9.0` npm package has several issues this fork fixes:
+
+| Fix | Description |
+|-----|-------------|
+| **Session sync** | OpenCode migrated from flat-file storage to SQLite (~Feb 2026). The original plugin pointed at `storage/session/`, `storage/message/`, etc. — directories that no longer exist. This fork exports sessions via the SDK and imports them via `opencode import`. |
+| **Compact mode pruning** | Sessions are exported in `compact` mode by default: old tool outputs are replaced with a placeholder (same strategy Anthropic and OpenCode itself use for context management). Full verbatim sync is available via `sessionSync.mode = "full"`. |
+| **Cross-platform paths** | Session `directory` and message `path.cwd`/`path.root` fields are rewritten on import so sessions are visible when pushing from macOS (`/Users/X/...`) and pulling on Linux (`/home/X/...`). |
+| **Skills sync** | `~/.config/opencode/skills/` is now included in the synced directories. |
+| **Lib sync** | `~/.config/opencode/lib/` is now included, so shared modules imported by synced plugins are available on all machines. |
+| **dist included** | The npm-published package is missing `dist/`. This fork includes the compiled output so it can be installed directly from GitHub. |
+
+## Installing from this fork
+
+The OpenCode plugin system only supports npm package names — it does not support `github:` URLs. The workaround is to clone this fork and copy the compiled `dist/` into the OpenCode plugin cache.
+
+> **Note for LLMs**: These are the exact steps to install this plugin on a new machine. Follow them in order. Do not skip the cache patch step — without it, the plugin will load but have no commands.
+
+### Prerequisites
+
+```bash
+# 1. Install GitHub CLI and authenticate
+gh auth login
+
+# 2. Ensure git is installed
+git --version
+```
+
+### macOS
+
+```bash
+# 1. Install OpenCode (if not already installed)
+npm install -g opencode-ai
+
+# 2. Add the plugin to your OpenCode config
+# Edit ~/.config/opencode/opencode.json and ensure this is present:
+# "plugin": ["opencode-synced"]
+
+# 3. Run OpenCode once to trigger the plugin cache install
+opencode --version
+
+# 4. Clone this fork and patch the cache
+git clone --depth 1 --branch feat/session-sync \
+  https://github.com/kshptl/opencode-synced.git /tmp/opencode-synced-fork
+
+rm -rf ~/.cache/opencode/node_modules/opencode-synced/dist
+cp -r /tmp/opencode-synced-fork/dist \
+  ~/.cache/opencode/node_modules/opencode-synced/
+
+# 5. Start OpenCode and run /sync-link or /sync-init
+```
+
+### Linux / WSL
+
+```bash
+# 1. Install OpenCode (if not already installed)
+npm install -g opencode-ai
+
+# 2. Add the plugin to your OpenCode config
+mkdir -p ~/.config/opencode
+cat > ~/.config/opencode/opencode.json << 'EOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["opencode-synced"]
+}
+EOF
+
+# 3. Run OpenCode once to trigger the plugin cache install
+opencode --version
+
+# 4. Clone this fork and patch the cache
+git clone --depth 1 --branch feat/session-sync \
+  https://github.com/kshptl/opencode-synced.git /tmp/opencode-synced-fork
+
+rm -rf ~/.cache/opencode/node_modules/opencode-synced/dist
+cp -r /tmp/opencode-synced-fork/dist \
+  ~/.cache/opencode/node_modules/opencode-synced/
+
+# 5. Start OpenCode
+opencode
+
+# 6. Run /sync-link to pull your existing config from GitHub
+#    This will overwrite ~/.config/opencode with your synced config.
+#    After it completes, re-patch the cache (the pull may reinstall the plugin):
+rm -rf ~/.cache/opencode/node_modules/opencode-synced/dist
+cp -r /tmp/opencode-synced-fork/dist \
+  ~/.cache/opencode/node_modules/opencode-synced/
+
+# 7. Restart OpenCode
+```
+
+### Keeping the fork up to date
+
+When new changes are pushed to the fork, update your local cache:
+
+```bash
+cd /tmp/opencode-synced-fork
+git pull
+rm -rf ~/.cache/opencode/node_modules/opencode-synced/dist
+cp -r dist ~/.cache/opencode/node_modules/opencode-synced/
+# Restart OpenCode
+```
+
+### Single-command update (add to your shell profile)
+
+```bash
+alias opencode-sync-update='
+  cd /tmp/opencode-synced-fork && git pull &&
+  rm -rf ~/.cache/opencode/node_modules/opencode-synced/dist &&
+  cp -r dist ~/.cache/opencode/node_modules/opencode-synced/ &&
+  echo "opencode-synced updated. Restart OpenCode."
+'
+```
+
+---
 
 ## Setup
 
@@ -89,6 +208,8 @@ Create `~/.config/opencode/opencode-synced.jsonc`:
 - `~/.config/opencode/opencode.json` and `opencode.jsonc`
 - `~/.config/opencode/AGENTS.md`
 - `~/.config/opencode/agent/`, `command/`, `mode/`, `tool/`, `themes/`, `plugin/`
+- `~/.config/opencode/skills/` — agent skills
+- `~/.config/opencode/lib/` — shared modules used by plugins
 - `~/.local/state/opencode/model.json` (model favorites)
 - Any extra paths in `extraConfigPaths` (allowlist, files or folders)
 
@@ -105,22 +226,29 @@ in a private repo, set `"includeMcpSecrets": true` (requires `includeSecrets`).
 
 ### Sessions (private repos only)
 
-Sync your opencode sessions (conversation history from `/sessions`) across machines by setting `"includeSessions": true`. This requires `includeSecrets` to also be enabled since sessions may contain sensitive data.
+Sync your opencode conversation history across machines by setting `"includeSessions": true`.
 
 ```jsonc
 {
   "repo": { ... },
   "includeSecrets": true,
-  "includeSessions": true
+  "includeSessions": true,
+  "sessionSync": {
+    "mode": "compact",           // "compact" (default) | "full"
+    "keepRecentToolResults": 5   // number of recent tool outputs to keep unredacted
+  }
 }
 ```
 
-Synced session data:
+Sessions are exported via the OpenCode SDK and stored as NDJSON files in the sync repo under `data/sessions/`. On pull, missing sessions are imported via `opencode import` with path rewriting for cross-platform compatibility (macOS ↔ Linux).
 
-- `~/.local/share/opencode/storage/session/` - Session files
-- `~/.local/share/opencode/storage/message/` - Message history
-- `~/.local/share/opencode/storage/part/` - Message parts
-- `~/.local/share/opencode/storage/session_diff/` - Session diffs
+**Compact mode** (default): old tool result outputs are replaced with `[Synced: tool output cleared]` — the same strategy OpenCode itself uses for context management. The last N tool results (default: 5) are kept in full. This reduces session size by 90%+ while preserving full conversation continuity.
+
+**Full mode**: syncs everything verbatim.
+
+**Append-only semantics**: sessions deleted locally are not deleted from the sync repo or from other machines on pull. The sync repo acts as a historical archive.
+
+**Cross-platform note**: session `directory` and message `path.cwd`/`path.root` fields are rewritten on import to match the local project directory, so sessions pushed from macOS (`/Users/X/project`) are visible on Linux (`/home/X/project`).
 
 ### Prompt Stash (private repos only)
 
