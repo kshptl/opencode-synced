@@ -46,7 +46,10 @@ const SESSIONS_DIR_NAME = path.join('data', 'sessions');
 const MANIFEST_FILE_NAME = 'manifest.json';
 
 /** Max size of a single .jsonl session file before import is refused. */
-const MAX_SESSION_FILE_BYTES = 100 * 1024 * 1024; // 100 MB
+const MAX_SESSION_FILE_BYTES = 95 * 1024 * 1024; // 95 MB — stays under GitHub's 100MB limit
+
+/** Max size of a session NDJSON before export is skipped with a warning. */
+const MAX_EXPORT_FILE_BYTES = 95 * 1024 * 1024; // 95 MB
 
 /** Max sessions to import in a single pull (prevents manifest-stuffing attacks). */
 const MAX_SESSIONS_PER_PULL = 1000;
@@ -325,6 +328,23 @@ export async function exportSessionsToRepo(
     }
 
     const pruned = pruneMessages(messages, config.sessionSync);
+
+    const ndjsonContent = pruned.map((m) => JSON.stringify(m) + '\n').join('');
+    const ndjsonBytes = Buffer.byteLength(ndjsonContent, 'utf-8');
+
+    if (ndjsonBytes > MAX_EXPORT_FILE_BYTES) {
+      // Session is too large for GitHub's 100MB file limit even after pruning.
+      // Skip and remove any previously exported files to avoid push failures.
+      await fs.rm(jsonlPath(repoRoot, sessionId), { force: true });
+      await fs.rm(metaPath(repoRoot, sessionId), { force: true });
+      delete manifest[sessionId];
+      console.warn(
+        `[opencode-synced] Skipping session ${sessionId} ("${session.title}"): ` +
+          `${(ndjsonBytes / 1024 / 1024).toFixed(1)}MB exceeds the ${MAX_EXPORT_FILE_BYTES / 1024 / 1024}MB export limit.`
+      );
+      updated = true; // manifest changed (entry removed)
+      continue;
+    }
 
     await writeNdjson(jsonlPath(repoRoot, sessionId), pruned);
     await fs.mkdir(sessionsRoot(repoRoot), { recursive: true });

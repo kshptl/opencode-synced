@@ -48,9 +48,7 @@ export function normalizeSessionSyncConfig(input) {
         keepRecentToolResults: typeof input?.keepRecentToolResults === 'number' && input.keepRecentToolResults >= 0
             ? input.keepRecentToolResults
             : 5,
-        projectPaths: input?.projectPaths && typeof input.projectPaths === 'object'
-            ? input.projectPaths
-            : {},
+        projectPaths: input?.projectPaths && typeof input.projectPaths === 'object' ? input.projectPaths : {},
     };
 }
 export function normalizeSyncConfig(config) {
