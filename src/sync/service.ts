@@ -818,7 +818,7 @@ async function buildConfigFromInit($: Shell, options: InitOptions) {
     repo,
     includeSecrets: options.includeSecrets ?? false,
     includeMcpSecrets: options.includeMcpSecrets ?? false,
-    includeSessions: options.includeSessions ?? false,
+    includeSessions: options.includeSessions ?? true,
     includePromptStash: options.includePromptStash ?? false,
     includeModelFavorites: options.includeModelFavorites ?? true,
     extraSecretPaths: options.extraSecretPaths ?? [],

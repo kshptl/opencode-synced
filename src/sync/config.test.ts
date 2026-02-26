@@ -79,6 +79,16 @@ describe('normalizeSyncConfig', () => {
     expect(normalized.includeModelFavorites).toBe(true);
   });
 
+  it('enables sessions by default', () => {
+    const normalized = normalizeSyncConfig({});
+    expect(normalized.includeSessions).toBe(true);
+  });
+
+  it('allows sessions to be disabled explicitly', () => {
+    const normalized = normalizeSyncConfig({ includeSessions: false });
+    expect(normalized.includeSessions).toBe(false);
+  });
+
   it('defaults extra path lists when omitted', () => {
     const normalized = normalizeSyncConfig({ includeSecrets: true });
     expect(normalized.extraSecretPaths).toEqual([]);

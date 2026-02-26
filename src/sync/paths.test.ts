@@ -134,6 +134,40 @@ describe('buildSyncPlan', () => {
     expect(mcpItem).toBeUndefined();
   });
 
+  it('includes package.json and bun.lock in default sync items', () => {
+    const env = { HOME: '/home/test' } as NodeJS.ProcessEnv;
+    const locations = resolveSyncLocations(env, 'linux');
+    const config: SyncConfig = {
+      repo: { owner: 'acme', name: 'config' },
+      includeSecrets: false,
+    };
+
+    const plan = buildSyncPlan(normalizeSyncConfig(config), locations, '/repo', 'linux');
+    const packageJsonItem = plan.items.find((item) =>
+      item.localPath.endsWith('/opencode/package.json')
+    );
+    const bunLockItem = plan.items.find((item) => item.localPath.endsWith('/opencode/bun.lock'));
+
+    expect(packageJsonItem).toBeTruthy();
+    expect(bunLockItem).toBeTruthy();
+  });
+
+  it('includes plugins, skills, and lib dirs in default sync items', () => {
+    const env = { HOME: '/home/test' } as NodeJS.ProcessEnv;
+    const locations = resolveSyncLocations(env, 'linux');
+    const config: SyncConfig = {
+      repo: { owner: 'acme', name: 'config' },
+      includeSecrets: false,
+    };
+
+    const plan = buildSyncPlan(normalizeSyncConfig(config), locations, '/repo', 'linux');
+    const dirNames = plan.items.filter((i) => i.type === 'dir').map((i) => i.localPath);
+
+    expect(dirNames.some((p) => p.endsWith('/opencode/plugins'))).toBe(true);
+    expect(dirNames.some((p) => p.endsWith('/opencode/skills'))).toBe(true);
+    expect(dirNames.some((p) => p.endsWith('/opencode/lib'))).toBe(true);
+  });
+
   it('includes model favorites by default and allows disabling', () => {
     const env = { HOME: '/home/test' } as NodeJS.ProcessEnv;
     const locations = resolveSyncLocations(env, 'linux');

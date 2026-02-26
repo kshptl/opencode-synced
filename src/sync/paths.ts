@@ -50,6 +50,8 @@ const DEFAULT_AGENTS_NAME = 'AGENTS.md';
 const DEFAULT_SYNC_CONFIG_NAME = 'opencode-synced.jsonc';
 const DEFAULT_OVERRIDES_NAME = 'opencode-synced.overrides.jsonc';
 const DEFAULT_STATE_NAME = 'sync-state.json';
+const DEFAULT_PACKAGE_JSON_NAME = 'package.json';
+const DEFAULT_BUN_LOCK_NAME = 'bun.lock';
 
 const CONFIG_DIRS = [
   'agent',
@@ -214,6 +216,8 @@ export function buildSyncPlan(
   addFile(DEFAULT_CONFIGC_NAME, false, true);
   addFile(DEFAULT_AGENTS_NAME, false, false);
   addFile(DEFAULT_SYNC_CONFIG_NAME, false, false);
+  addFile(DEFAULT_PACKAGE_JSON_NAME, false, false);
+  addFile(DEFAULT_BUN_LOCK_NAME, false, false);
 
   for (const dirName of CONFIG_DIRS) {
     items.push({
