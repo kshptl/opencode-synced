@@ -7,7 +7,7 @@ const DEFAULT_AGENTS_NAME = 'AGENTS.md';
 const DEFAULT_SYNC_CONFIG_NAME = 'opencode-synced.jsonc';
 const DEFAULT_OVERRIDES_NAME = 'opencode-synced.overrides.jsonc';
 const DEFAULT_STATE_NAME = 'sync-state.json';
-const CONFIG_DIRS = ['agent', 'command', 'mode', 'tool', 'themes', 'plugin'];
+const CONFIG_DIRS = ['agent', 'command', 'mode', 'tool', 'themes', 'plugin', 'skills', 'lib'];
 // SESSION_DIRS removed: OpenCode migrated from flat-file storage to SQLite (~Feb 2026).
 // Sessions are now synced via the SDK export/import path in sessions.ts.
 const PROMPT_STASH_FILES = ['prompt-stash.jsonl', 'prompt-history.jsonl'];
