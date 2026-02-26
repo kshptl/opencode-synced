@@ -157,6 +157,23 @@ export const opencodeConfigSync: Plugin = async (ctx) => {
       extraSecretPaths: tool.schema.array(tool.schema.string()).optional(),
       extraConfigPaths: tool.schema.array(tool.schema.string()).optional(),
       localRepoPath: tool.schema.string().optional().describe('Override local repo path'),
+      sessionSync: tool.schema
+        .object({
+          mode: tool.schema
+            .enum(['compact', 'full'])
+            .optional()
+            .describe(
+              'compact (default): prune old tool outputs for storage efficiency. full: sync verbatim.'
+            ),
+          keepRecentToolResults: tool.schema
+            .number()
+            .optional()
+            .describe(
+              'Number of most-recent completed tool results to keep unredacted (default 5).'
+            ),
+        })
+        .optional()
+        .describe('Session sync options (only used when includeSessions is true).'),
     },
     async execute(args) {
       try {
@@ -180,6 +197,7 @@ export const opencodeConfigSync: Plugin = async (ctx) => {
             extraSecretPaths: args.extraSecretPaths,
             extraConfigPaths: args.extraConfigPaths,
             localRepoPath: args.localRepoPath,
+            sessionSync: args.sessionSync,
           });
         }
         if (args.command === 'link') {

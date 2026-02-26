@@ -40,6 +40,7 @@ import {
   resolveSecretsBackendConfig,
   type SecretsBackend,
 } from './secrets-backend.js';
+import { exportSessionsToRepo, importSessionsFromRepo } from './sessions.js';
 import {
   createLogger,
   extractTextFromResponse,
@@ -68,6 +69,7 @@ interface InitOptions {
   extraSecretPaths?: string[];
   extraConfigPaths?: string[];
   localRepoPath?: string;
+  sessionSync?: { mode?: 'compact' | 'full'; keepRecentToolResults?: number };
 }
 
 interface LinkOptions {
@@ -483,6 +485,19 @@ export function createSyncService(ctx: SyncServiceContext): SyncService {
         await syncRepoToLocal(plan, overrides);
         await runSecretsPullIfConfigured(config);
 
+        if (config.includeSessions) {
+          try {
+            const importedCount = await importSessionsFromRepo(ctx.client, repoRoot, (msg) =>
+              log.info(msg)
+            );
+            if (importedCount > 0) {
+              log.info(`Imported ${importedCount} session(s) from sync repo.`);
+            }
+          } catch (error) {
+            log.warn('Session import failed during pull', { error: formatError(error) });
+          }
+        }
+
         await updateState(locations, {
           lastPull: new Date().toISOString(),
           lastRemoteUpdate: new Date().toISOString(),
@@ -513,6 +528,15 @@ export function createSyncService(ctx: SyncServiceContext): SyncService {
           overridesPath: locations.overridesPath,
           allowMcpSecrets: canCommitMcpSecrets(config),
         });
+
+        if (config.includeSessions) {
+          try {
+            const updatedManifest = await exportSessionsToRepo(ctx.client, repoRoot, config);
+            await updateState(locations, { sessionManifest: updatedManifest });
+          } catch (error) {
+            log.warn('Session export failed during push', { error: formatError(error) });
+          }
+        }
 
         const dirty = await hasLocalChanges(ctx.$, repoRoot);
         if (!dirty) {
@@ -693,6 +717,20 @@ async function runStartup(
     const plan = buildSyncPlan(config, locations, repoRoot);
     await syncRepoToLocal(plan, overrides);
     await options.runSecretsPullIfConfigured(config);
+
+    if (config.includeSessions) {
+      try {
+        const importedCount = await importSessionsFromRepo(ctx.client, repoRoot, (msg) =>
+          log.info(msg)
+        );
+        if (importedCount > 0) {
+          log.info(`Imported ${importedCount} session(s) from sync repo.`);
+        }
+      } catch (error) {
+        log.warn('Session import failed during startup pull', { error: formatError(error) });
+      }
+    }
+
     await updateState(locations, {
       lastPull: new Date().toISOString(),
       lastRemoteUpdate: new Date().toISOString(),
@@ -707,6 +745,16 @@ async function runStartup(
     overridesPath: locations.overridesPath,
     allowMcpSecrets: canCommitMcpSecrets(config),
   });
+
+  if (config.includeSessions) {
+    try {
+      const updatedManifest = await exportSessionsToRepo(ctx.client, repoRoot, config);
+      await updateState(locations, { sessionManifest: updatedManifest });
+    } catch (error) {
+      log.warn('Session export failed during startup push', { error: formatError(error) });
+    }
+  }
+
   const changes = await hasLocalChanges(ctx.$, repoRoot);
   if (!changes) {
     log.debug('No local changes to push');
@@ -770,6 +818,7 @@ async function buildConfigFromInit($: Shell, options: InitOptions) {
     extraSecretPaths: options.extraSecretPaths ?? [],
     extraConfigPaths: options.extraConfigPaths ?? [],
     localRepoPath: options.localRepoPath,
+    sessionSync: options.sessionSync,
   });
 }
 

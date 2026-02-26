@@ -52,7 +52,8 @@ const DEFAULT_OVERRIDES_NAME = 'opencode-synced.overrides.jsonc';
 const DEFAULT_STATE_NAME = 'sync-state.json';
 
 const CONFIG_DIRS = ['agent', 'command', 'mode', 'tool', 'themes', 'plugin'];
-const SESSION_DIRS = ['storage/session', 'storage/message', 'storage/part', 'storage/session_diff'];
+// SESSION_DIRS removed: OpenCode migrated from flat-file storage to SQLite (~Feb 2026).
+// Sessions are now synced via the SDK export/import path in sessions.ts.
 const PROMPT_STASH_FILES = ['prompt-stash.jsonl', 'prompt-history.jsonl'];
 const MODEL_FAVORITES_FILE = 'model.json';
 
@@ -242,18 +243,6 @@ export function buildSyncPlan(
           isConfigFile: false,
         }
       );
-    }
-
-    if (config.includeSessions) {
-      for (const dirName of SESSION_DIRS) {
-        items.push({
-          localPath: path.join(dataRoot, dirName),
-          repoPath: path.join(repoDataRoot, dirName),
-          type: 'dir',
-          isSecret: true,
-          isConfigFile: false,
-        });
-      }
     }
 
     if (config.includePromptStash) {

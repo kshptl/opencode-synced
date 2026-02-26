@@ -24,6 +24,20 @@ export interface SecretsBackendConfig {
   documents?: SecretsBackendDocuments;
 }
 
+export interface SessionSyncConfig {
+  /** 'compact' prunes old tool outputs (default). 'full' syncs everything verbatim. */
+  mode: 'compact' | 'full';
+  /** Number of most-recent completed tool results to keep unredacted in compact mode. */
+  keepRecentToolResults: number;
+}
+
+export interface SessionManifestEntry {
+  /** Number of messages written to the NDJSON file. */
+  messageCount: number;
+  /** session.time.updated at the time of last export. */
+  timeUpdated: number;
+}
+
 export interface SyncConfig {
   repo?: SyncRepoConfig;
   localRepoPath?: string;
@@ -35,6 +49,7 @@ export interface SyncConfig {
   secretsBackend?: SecretsBackendConfig;
   extraSecretPaths?: string[];
   extraConfigPaths?: string[];
+  sessionSync?: Partial<SessionSyncConfig>;
 }
 
 export interface NormalizedSyncConfig extends SyncConfig {
@@ -46,6 +61,7 @@ export interface NormalizedSyncConfig extends SyncConfig {
   secretsBackend?: SecretsBackendConfig;
   extraSecretPaths: string[];
   extraConfigPaths: string[];
+  sessionSync: SessionSyncConfig;
 }
 
 export interface SyncState {
@@ -53,6 +69,8 @@ export interface SyncState {
   lastPush?: string;
   lastRemoteUpdate?: string;
   lastSecretsHash?: string;
+  lastSessionSync?: string;
+  sessionManifest?: Record<string, SessionManifestEntry>;
 }
 
 export async function pathExists(filePath: string): Promise<boolean> {
@@ -103,6 +121,18 @@ export function normalizeSecretsBackend(
   return { type: '1password', vault, documents };
 }
 
+export function normalizeSessionSyncConfig(
+  input: Partial<SessionSyncConfig> | undefined
+): SessionSyncConfig {
+  return {
+    mode: input?.mode === 'full' ? 'full' : 'compact',
+    keepRecentToolResults:
+      typeof input?.keepRecentToolResults === 'number' && input.keepRecentToolResults >= 0
+        ? input.keepRecentToolResults
+        : 5,
+  };
+}
+
 export function normalizeSyncConfig(config: SyncConfig): NormalizedSyncConfig {
   const includeSecrets = Boolean(config.includeSecrets);
   const includeModelFavorites = config.includeModelFavorites !== false;
@@ -117,6 +147,7 @@ export function normalizeSyncConfig(config: SyncConfig): NormalizedSyncConfig {
     extraConfigPaths: Array.isArray(config.extraConfigPaths) ? config.extraConfigPaths : [],
     localRepoPath: config.localRepoPath,
     repo: config.repo,
+    sessionSync: normalizeSessionSyncConfig(config.sessionSync),
   };
 }
 
