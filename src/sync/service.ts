@@ -69,7 +69,11 @@ interface InitOptions {
   extraSecretPaths?: string[];
   extraConfigPaths?: string[];
   localRepoPath?: string;
-  sessionSync?: { mode?: 'compact' | 'full'; keepRecentToolResults?: number };
+  sessionSync?: {
+    mode?: 'compact' | 'full';
+    keepRecentToolResults?: number;
+    projectPaths?: Record<string, string>;
+  };
 }
 
 interface LinkOptions {
@@ -490,7 +494,7 @@ export function createSyncService(ctx: SyncServiceContext): SyncService {
             const importedCount = await importSessionsFromRepo(
               ctx.client,
               repoRoot,
-              ctx.directory,
+              config,
               (msg) => log.info(msg)
             );
             if (importedCount > 0) {
@@ -723,11 +727,8 @@ async function runStartup(
 
     if (config.includeSessions) {
       try {
-        const importedCount = await importSessionsFromRepo(
-          ctx.client,
-          repoRoot,
-          ctx.directory,
-          (msg) => log.info(msg)
+        const importedCount = await importSessionsFromRepo(ctx.client, repoRoot, config, (msg) =>
+          log.info(msg)
         );
         if (importedCount > 0) {
           log.info(`Imported ${importedCount} session(s) from sync repo.`);

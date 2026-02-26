@@ -27,7 +27,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 import type { PluginInput } from '@opencode-ai/plugin';
-import type { AssistantMessage, Message, Part, Session } from '@opencode-ai/sdk';
+import type { AssistantMessage, Message, Part, Project, Session } from '@opencode-ai/sdk';
 
 import type { NormalizedSyncConfig, SessionManifestEntry, SessionSyncConfig } from './config.js';
 import { unwrapData } from './utils.js';
@@ -254,11 +254,11 @@ async function fetchSessionMessages(
 }
 
 /**
- * Export all updated sessions to the sync repo.
+ * Export all updated sessions to the sync repo across ALL projects.
  *
- * Only sessions whose time.updated has advanced since the manifest entry
- * are re-exported (incremental). Full rewrite of the NDJSON on each update
- * ensures correct pruning-window boundary across all messages.
+ * Uses client.project.list() to discover all known projects, then queries
+ * sessions per project. Falls back to the unscoped client.session.list()
+ * so sessions are always exported even if project.list() is scoped.
  *
  * Returns the updated manifest (to be merged into SyncState by the caller).
  */
@@ -269,13 +269,40 @@ export async function exportSessionsToRepo(
 ): Promise<Record<string, SessionManifestEntry>> {
   const manifest = await readManifest(repoRoot);
 
-  // Fetch all sessions.
-  const listResult = await client.session.list();
-  const sessions = unwrapData<Session[]>(listResult) ?? [];
+  // Collect sessions from all known projects, deduplicating by ID.
+  const sessionMap = new Map<string, Session>();
+
+  // 1. Try to enumerate all projects and fetch per-project sessions.
+  try {
+    const projectsResult = await client.project.list();
+    const projects = unwrapData<Project[]>(projectsResult) ?? [];
+    for (const project of projects) {
+      try {
+        const listResult = await client.session.list({
+          query: { directory: project.worktree },
+        });
+        const sessions = unwrapData<Session[]>(listResult) ?? [];
+        for (const s of sessions) sessionMap.set(s.id, s);
+      } catch {
+        // Skip projects that fail to list — don't abort the whole export.
+      }
+    }
+  } catch {
+    // project.list() unavailable or scoped — fall through to unscoped call.
+  }
+
+  // 2. Always also call unscoped list as a fallback/supplement.
+  try {
+    const listResult = await client.session.list();
+    const sessions = unwrapData<Session[]>(listResult) ?? [];
+    for (const s of sessions) sessionMap.set(s.id, s);
+  } catch {
+    // Ignore — we may already have sessions from project loop.
+  }
 
   let updated = false;
 
-  for (const session of sessions) {
+  for (const session of sessionMap.values()) {
     const sessionId = session.id;
 
     // Security: validate ID before any file-path use.
@@ -326,33 +353,85 @@ interface ExportFormat {
 }
 
 /**
+ * Extracts the home directory from an absolute path.
+ * e.g. /Users/kush/project → /Users/kush
+ *      /home/kush/project  → /home/kush
+ *      /root/project       → /root
+ * Returns null if the path is too shallow to extract a home dir.
+ * @internal exported for testing
+ */
+export function extractSourceHome(directory: string): string | null {
+  const parts = directory.split('/').filter(Boolean);
+  // /root is a valid single-segment home on Linux
+  if (parts.length >= 1 && parts[0] === 'root') return '/root';
+  // /Users/X or /home/X — need at least 2 segments
+  if (parts.length >= 2) return `/${parts[0]}/${parts[1]}`;
+  return null;
+}
+
+/**
+ * Rewrites an absolute path from the source machine to the local machine.
+ *
+ * Resolution order:
+ * 1. Check projectPaths for an explicit full-path mapping.
+ * 2. Fall back to replacing the source home prefix with os.homedir().
+ * 3. If neither applies, return the path unchanged.
+ *
+ * @internal exported for testing
+ */
+export function rewriteAbsolutePath(
+  p: string,
+  sourceHome: string | null,
+  localHome: string,
+  projectPaths: Record<string, string>
+): string {
+  // 1. Explicit project path mapping (longest-prefix match wins).
+  const sortedKeys = Object.keys(projectPaths).sort((a, b) => b.length - a.length);
+  for (const src of sortedKeys) {
+    if (p === src || p.startsWith(src + '/') || p.startsWith(src + path.sep)) {
+      return projectPaths[src] + p.slice(src.length);
+    }
+  }
+
+  // 2. Home directory substitution.
+  if (sourceHome && sourceHome !== localHome) {
+    if (p === sourceHome || p.startsWith(sourceHome + '/')) {
+      return localHome + p.slice(sourceHome.length);
+    }
+  }
+
+  return p;
+}
+
+/**
  * Rewrites absolute paths in session and message data so imported sessions
- * are visible under the local project directory.
+ * are visible under the correct local project directory.
  *
- * When pushing from macOS (/Users/X/project) and pulling on Linux
- * (/home/X/project), the session.directory and every AssistantMessage's
- * path.cwd / path.root are updated by replacing the source prefix with the
- * local project directory.
+ * Uses home-directory substitution as the default heuristic, with an
+ * optional explicit projectPaths map for non-standard directory structures.
  *
- * If the directory already matches, the original objects are returned as-is.
+ * If the directory already resolves to the same path, original objects are
+ * returned as-is (no copy made).
  * @internal exported for testing
  */
 export function rewriteSessionPaths(
   session: Session,
   messages: MessageExport[],
-  localDirectory: string
+  projectPaths: Record<string, string> = {}
 ): { session: Session; messages: MessageExport[] } {
-  const sourceDir = session.directory;
+  const localHome = os.homedir();
+  const sourceHome = extractSourceHome(session.directory);
 
-  // Nothing to do if the directories already match.
-  if (sourceDir === localDirectory) {
+  const rewrite = (p: string) => rewriteAbsolutePath(p, sourceHome, localHome, projectPaths);
+
+  const newDir = rewrite(session.directory);
+
+  // No-op if nothing changes.
+  if (newDir === session.directory) {
     return { session, messages };
   }
 
-  const rewrite = (p: string): string =>
-    p.startsWith(sourceDir) ? localDirectory + p.slice(sourceDir.length) : p;
-
-  const rewrittenSession: Session = { ...session, directory: localDirectory };
+  const rewrittenSession: Session = { ...session, directory: newDir };
 
   const rewrittenMessages: MessageExport[] = messages.map((msg) => {
     if (msg.info.role !== 'assistant') return msg;
@@ -390,19 +469,19 @@ async function sessionExistsLocally(client: Client, sessionId: string): Promise<
 
 /**
  * Imports a single session by writing to a temp file and invoking `opencode import`.
- * Rewrites absolute paths so the session is visible under localDirectory.
+ * Rewrites absolute paths for cross-platform and cross-machine compatibility.
  * The temp file is always cleaned up.
  */
 async function importSession(
   session: Session,
   messages: MessageExport[],
-  localDirectory: string,
+  projectPaths: Record<string, string>,
   log: (msg: string) => void
 ): Promise<void> {
   const { session: rewrittenSession, messages: rewrittenMessages } = rewriteSessionPaths(
     session,
     messages,
-    localDirectory
+    projectPaths
   );
 
   const exportData: ExportFormat = { info: rewrittenSession, messages: rewrittenMessages };
@@ -447,14 +526,14 @@ async function readSessionMeta(repoRoot: string, sessionId: string): Promise<Ses
 /**
  * Import sessions from the sync repo that are missing locally.
  * Append-only: sessions that already exist locally are never modified.
- * Paths are rewritten to match localDirectory for cross-platform compatibility.
+ * Paths are rewritten using home-dir heuristic + optional projectPaths config.
  *
  * Returns the number of sessions successfully imported.
  */
 export async function importSessionsFromRepo(
   client: Client,
   repoRoot: string,
-  localDirectory: string,
+  config: NormalizedSyncConfig,
   log: (msg: string) => void
 ): Promise<number> {
   const manifest = await readManifest(repoRoot);
@@ -500,7 +579,7 @@ export async function importSessionsFromRepo(
     }
 
     try {
-      await importSession(sessionMeta, messages, localDirectory, log);
+      await importSession(sessionMeta, messages, config.sessionSync.projectPaths, log);
       imported++;
     } catch (err) {
       // Log and continue — one failing session must not block others.

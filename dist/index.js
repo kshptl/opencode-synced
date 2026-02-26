@@ -142,6 +142,10 @@ export const opencodeConfigSync = async (ctx) => {
                     .number()
                     .optional()
                     .describe('Number of most-recent completed tool results to keep unredacted (default 5).'),
+                projectPaths: tool.schema
+                    .record(tool.schema.string(), tool.schema.string())
+                    .optional()
+                    .describe('Explicit project path mappings for cross-machine import. e.g. { "/Users/kush/project": "/home/kush/project" }. Falls back to home-dir substitution when not set.'),
             })
                 .optional()
                 .describe('Session sync options (only used when includeSessions is true).'),

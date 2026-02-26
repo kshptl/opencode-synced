@@ -53,37 +53,56 @@ export declare function prunePartCompact(part: Part, recentToolIds: Set<string>)
 /** @internal exported for testing */
 export declare function pruneMessages(messages: MessageExport[], syncConfig: SessionSyncConfig): MessageExport[];
 /**
- * Export all updated sessions to the sync repo.
+ * Export all updated sessions to the sync repo across ALL projects.
  *
- * Only sessions whose time.updated has advanced since the manifest entry
- * are re-exported (incremental). Full rewrite of the NDJSON on each update
- * ensures correct pruning-window boundary across all messages.
+ * Uses client.project.list() to discover all known projects, then queries
+ * sessions per project. Falls back to the unscoped client.session.list()
+ * so sessions are always exported even if project.list() is scoped.
  *
  * Returns the updated manifest (to be merged into SyncState by the caller).
  */
 export declare function exportSessionsToRepo(client: Client, repoRoot: string, config: NormalizedSyncConfig): Promise<Record<string, SessionManifestEntry>>;
 /**
- * Rewrites absolute paths in session and message data so imported sessions
- * are visible under the local project directory.
- *
- * When pushing from macOS (/Users/X/project) and pulling on Linux
- * (/home/X/project), the session.directory and every AssistantMessage's
- * path.cwd / path.root are updated by replacing the source prefix with the
- * local project directory.
- *
- * If the directory already matches, the original objects are returned as-is.
+ * Extracts the home directory from an absolute path.
+ * e.g. /Users/kush/project → /Users/kush
+ *      /home/kush/project  → /home/kush
+ *      /root/project       → /root
+ * Returns null if the path is too shallow to extract a home dir.
  * @internal exported for testing
  */
-export declare function rewriteSessionPaths(session: Session, messages: MessageExport[], localDirectory: string): {
+export declare function extractSourceHome(directory: string): string | null;
+/**
+ * Rewrites an absolute path from the source machine to the local machine.
+ *
+ * Resolution order:
+ * 1. Check projectPaths for an explicit full-path mapping.
+ * 2. Fall back to replacing the source home prefix with os.homedir().
+ * 3. If neither applies, return the path unchanged.
+ *
+ * @internal exported for testing
+ */
+export declare function rewriteAbsolutePath(p: string, sourceHome: string | null, localHome: string, projectPaths: Record<string, string>): string;
+/**
+ * Rewrites absolute paths in session and message data so imported sessions
+ * are visible under the correct local project directory.
+ *
+ * Uses home-directory substitution as the default heuristic, with an
+ * optional explicit projectPaths map for non-standard directory structures.
+ *
+ * If the directory already resolves to the same path, original objects are
+ * returned as-is (no copy made).
+ * @internal exported for testing
+ */
+export declare function rewriteSessionPaths(session: Session, messages: MessageExport[], projectPaths?: Record<string, string>): {
     session: Session;
     messages: MessageExport[];
 };
 /**
  * Import sessions from the sync repo that are missing locally.
  * Append-only: sessions that already exist locally are never modified.
- * Paths are rewritten to match localDirectory for cross-platform compatibility.
+ * Paths are rewritten using home-dir heuristic + optional projectPaths config.
  *
  * Returns the number of sessions successfully imported.
  */
-export declare function importSessionsFromRepo(client: Client, repoRoot: string, localDirectory: string, log: (msg: string) => void): Promise<number>;
+export declare function importSessionsFromRepo(client: Client, repoRoot: string, config: NormalizedSyncConfig, log: (msg: string) => void): Promise<number>;
 export {};

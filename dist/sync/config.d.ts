@@ -21,6 +21,13 @@ export interface SessionSyncConfig {
     mode: 'compact' | 'full';
     /** Number of most-recent completed tool results to keep unredacted in compact mode. */
     keepRecentToolResults: number;
+    /**
+     * Explicit project path mappings for cross-machine import.
+     * Keys are source-machine absolute paths, values are local absolute paths.
+     * Example: { "/Users/kush/kalshi-arb-bot": "/home/kush/kalshi-arb-bot" }
+     * When not set, home-directory substitution is used as a heuristic.
+     */
+    projectPaths: Record<string, string>;
 }
 export interface SessionManifestEntry {
     /** Number of messages written to the NDJSON file. */

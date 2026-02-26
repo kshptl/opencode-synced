@@ -19,6 +19,7 @@ interface InitOptions {
     sessionSync?: {
         mode?: 'compact' | 'full';
         keepRecentToolResults?: number;
+        projectPaths?: Record<string, string>;
     };
 }
 interface LinkOptions {
