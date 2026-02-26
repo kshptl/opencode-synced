@@ -4,6 +4,14 @@ import { chmodIfExists, deepMerge, hasOwn, parseJsonc, pathExists, stripOverride
 import { extractMcpSecrets, hasOverrides, mergeOverrides, stripOverrideKeys, } from './mcp-secrets.js';
 import { normalizePath } from './paths.js';
 export async function syncRepoToLocal(plan, overrides) {
+    // Ensure all standard config directories exist locally, even if the repo
+    // doesn't have them yet (git doesn't track empty dirs, so a directory like
+    // plugins/ may never appear in the repo until content is added).
+    for (const item of plan.items) {
+        if (item.type === 'dir' && !item.isSecret) {
+            await fs.mkdir(item.localPath, { recursive: true });
+        }
+    }
     for (const item of plan.items) {
         await copyItem(item.repoPath, item.localPath, item.type);
     }
