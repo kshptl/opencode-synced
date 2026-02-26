@@ -19,8 +19,39 @@
  *   - File size limits enforced before loading.
  */
 import type { PluginInput } from '@opencode-ai/plugin';
-import type { NormalizedSyncConfig, SessionManifestEntry } from './config.js';
+import type { Message, Part, Session } from '@opencode-ai/sdk';
+import type { NormalizedSyncConfig, SessionManifestEntry, SessionSyncConfig } from './config.js';
 type Client = PluginInput['client'];
+/** Strict pattern: OpenCode session IDs are "ses_" + alphanumeric. */
+export declare const SESSION_ID_RE: RegExp;
+export declare const COMPACT_TOOL_PLACEHOLDER = "[Synced: tool output cleared]";
+export declare const COMPACT_REASONING_PLACEHOLDER = "";
+/**
+ * Returns an absolute path under the sessions root, after validating:
+ * 1. sessionId matches SESSION_ID_RE
+ * 2. the resolved path stays within sessionsRoot (no traversal)
+ * @internal exported for testing
+ */
+export declare function safeSessionPath(repoRoot: string, sessionId: string, suffix: string): string;
+/** @internal exported for testing */
+export interface MessageExport {
+    info: Message;
+    parts: Part[];
+}
+/**
+ * Counts completed tool-result parts across all messages (in order).
+ * Returns a Set of part IDs that should be kept in full.
+ * @internal exported for testing
+ */
+export declare function buildRecentToolPartIds(messages: MessageExport[], keepCount: number): Set<string>;
+/**
+ * Returns a pruned copy of a Part for compact mode.
+ * recentToolIds: set of completed-tool part IDs to keep in full.
+ * @internal exported for testing
+ */
+export declare function prunePartCompact(part: Part, recentToolIds: Set<string>): Part;
+/** @internal exported for testing */
+export declare function pruneMessages(messages: MessageExport[], syncConfig: SessionSyncConfig): MessageExport[];
 /**
  * Export all updated sessions to the sync repo.
  *
@@ -31,6 +62,22 @@ type Client = PluginInput['client'];
  * Returns the updated manifest (to be merged into SyncState by the caller).
  */
 export declare function exportSessionsToRepo(client: Client, repoRoot: string, config: NormalizedSyncConfig): Promise<Record<string, SessionManifestEntry>>;
+/**
+ * Rewrites absolute paths in session and message data so imported sessions
+ * are visible under the local project directory.
+ *
+ * When pushing from macOS (/Users/X/project) and pulling on Linux
+ * (/home/X/project), the session.directory and every AssistantMessage's
+ * path.cwd / path.root are updated by replacing the source prefix with the
+ * local project directory.
+ *
+ * If the directory already matches, the original objects are returned as-is.
+ * @internal exported for testing
+ */
+export declare function rewriteSessionPaths(session: Session, messages: MessageExport[], localDirectory: string): {
+    session: Session;
+    messages: MessageExport[];
+};
 /**
  * Import sessions from the sync repo that are missing locally.
  * Append-only: sessions that already exist locally are never modified.

@@ -40,7 +40,7 @@ type Shell = PluginInput['$'];
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 /** Strict pattern: OpenCode session IDs are "ses_" + alphanumeric. */
-const SESSION_ID_RE = /^ses_[a-zA-Z0-9]{10,50}$/;
+export const SESSION_ID_RE = /^ses_[a-zA-Z0-9]{10,50}$/;
 
 const SESSIONS_DIR_NAME = path.join('data', 'sessions');
 const MANIFEST_FILE_NAME = 'manifest.json';
@@ -51,8 +51,8 @@ const MAX_SESSION_FILE_BYTES = 100 * 1024 * 1024; // 100 MB
 /** Max sessions to import in a single pull (prevents manifest-stuffing attacks). */
 const MAX_SESSIONS_PER_PULL = 1000;
 
-const COMPACT_TOOL_PLACEHOLDER = '[Synced: tool output cleared]';
-const COMPACT_REASONING_PLACEHOLDER = '';
+export const COMPACT_TOOL_PLACEHOLDER = '[Synced: tool output cleared]';
+export const COMPACT_REASONING_PLACEHOLDER = '';
 
 // ─── Path helpers ────────────────────────────────────────────────────────────
 
@@ -64,8 +64,9 @@ function sessionsRoot(repoRoot: string): string {
  * Returns an absolute path under the sessions root, after validating:
  * 1. sessionId matches SESSION_ID_RE
  * 2. the resolved path stays within sessionsRoot (no traversal)
+ * @internal exported for testing
  */
-function safeSessionPath(repoRoot: string, sessionId: string, suffix: string): string {
+export function safeSessionPath(repoRoot: string, sessionId: string, suffix: string): string {
   if (!SESSION_ID_RE.test(sessionId)) {
     throw new Error(`Invalid session ID format: "${sessionId}"`);
   }
@@ -91,7 +92,8 @@ function manifestPath(repoRoot: string): string {
 
 // ─── Pruning ─────────────────────────────────────────────────────────────────
 
-interface MessageExport {
+/** @internal exported for testing */
+export interface MessageExport {
   info: Message;
   parts: Part[];
 }
@@ -99,8 +101,9 @@ interface MessageExport {
 /**
  * Counts completed tool-result parts across all messages (in order).
  * Returns a Set of part IDs that should be kept in full.
+ * @internal exported for testing
  */
-function buildRecentToolPartIds(messages: MessageExport[], keepCount: number): Set<string> {
+export function buildRecentToolPartIds(messages: MessageExport[], keepCount: number): Set<string> {
   if (keepCount <= 0) return new Set();
 
   // Collect all completed-tool part IDs in document order.
@@ -121,8 +124,9 @@ function buildRecentToolPartIds(messages: MessageExport[], keepCount: number): S
 /**
  * Returns a pruned copy of a Part for compact mode.
  * recentToolIds: set of completed-tool part IDs to keep in full.
+ * @internal exported for testing
  */
-function prunePartCompact(part: Part, recentToolIds: Set<string>): Part {
+export function prunePartCompact(part: Part, recentToolIds: Set<string>): Part {
   if (part.type === 'tool') {
     const toolPart = part as Extract<Part, { type: 'tool' }>;
     // Only prune completed tool results that are outside the recent window.
@@ -148,7 +152,11 @@ function prunePartCompact(part: Part, recentToolIds: Set<string>): Part {
   return part;
 }
 
-function pruneMessages(messages: MessageExport[], syncConfig: SessionSyncConfig): MessageExport[] {
+/** @internal exported for testing */
+export function pruneMessages(
+  messages: MessageExport[],
+  syncConfig: SessionSyncConfig
+): MessageExport[] {
   if (syncConfig.mode === 'full') {
     return messages;
   }
@@ -327,8 +335,9 @@ interface ExportFormat {
  * local project directory.
  *
  * If the directory already matches, the original objects are returned as-is.
+ * @internal exported for testing
  */
-function rewriteSessionPaths(
+export function rewriteSessionPaths(
   session: Session,
   messages: MessageExport[],
   localDirectory: string

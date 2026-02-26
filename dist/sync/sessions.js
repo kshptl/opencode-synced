@@ -28,15 +28,15 @@ import { unwrapData } from './utils.js';
 const execFileAsync = promisify(execFile);
 // ─── Constants ──────────────────────────────────────────────────────────────
 /** Strict pattern: OpenCode session IDs are "ses_" + alphanumeric. */
-const SESSION_ID_RE = /^ses_[a-zA-Z0-9]{10,50}$/;
+export const SESSION_ID_RE = /^ses_[a-zA-Z0-9]{10,50}$/;
 const SESSIONS_DIR_NAME = path.join('data', 'sessions');
 const MANIFEST_FILE_NAME = 'manifest.json';
 /** Max size of a single .jsonl session file before import is refused. */
 const MAX_SESSION_FILE_BYTES = 100 * 1024 * 1024; // 100 MB
 /** Max sessions to import in a single pull (prevents manifest-stuffing attacks). */
 const MAX_SESSIONS_PER_PULL = 1000;
-const COMPACT_TOOL_PLACEHOLDER = '[Synced: tool output cleared]';
-const COMPACT_REASONING_PLACEHOLDER = '';
+export const COMPACT_TOOL_PLACEHOLDER = '[Synced: tool output cleared]';
+export const COMPACT_REASONING_PLACEHOLDER = '';
 // ─── Path helpers ────────────────────────────────────────────────────────────
 function sessionsRoot(repoRoot) {
     return path.join(repoRoot, SESSIONS_DIR_NAME);
@@ -45,8 +45,9 @@ function sessionsRoot(repoRoot) {
  * Returns an absolute path under the sessions root, after validating:
  * 1. sessionId matches SESSION_ID_RE
  * 2. the resolved path stays within sessionsRoot (no traversal)
+ * @internal exported for testing
  */
-function safeSessionPath(repoRoot, sessionId, suffix) {
+export function safeSessionPath(repoRoot, sessionId, suffix) {
     if (!SESSION_ID_RE.test(sessionId)) {
         throw new Error(`Invalid session ID format: "${sessionId}"`);
     }
@@ -69,8 +70,9 @@ function manifestPath(repoRoot) {
 /**
  * Counts completed tool-result parts across all messages (in order).
  * Returns a Set of part IDs that should be kept in full.
+ * @internal exported for testing
  */
-function buildRecentToolPartIds(messages, keepCount) {
+export function buildRecentToolPartIds(messages, keepCount) {
     if (keepCount <= 0)
         return new Set();
     // Collect all completed-tool part IDs in document order.
@@ -89,8 +91,9 @@ function buildRecentToolPartIds(messages, keepCount) {
 /**
  * Returns a pruned copy of a Part for compact mode.
  * recentToolIds: set of completed-tool part IDs to keep in full.
+ * @internal exported for testing
  */
-function prunePartCompact(part, recentToolIds) {
+export function prunePartCompact(part, recentToolIds) {
     if (part.type === 'tool') {
         const toolPart = part;
         // Only prune completed tool results that are outside the recent window.
@@ -113,7 +116,8 @@ function prunePartCompact(part, recentToolIds) {
     // All other part types are kept verbatim.
     return part;
 }
-function pruneMessages(messages, syncConfig) {
+/** @internal exported for testing */
+export function pruneMessages(messages, syncConfig) {
     if (syncConfig.mode === 'full') {
         return messages;
     }
@@ -247,8 +251,9 @@ export async function exportSessionsToRepo(client, repoRoot, config) {
  * local project directory.
  *
  * If the directory already matches, the original objects are returned as-is.
+ * @internal exported for testing
  */
-function rewriteSessionPaths(session, messages, localDirectory) {
+export function rewriteSessionPaths(session, messages, localDirectory) {
     const sourceDir = session.directory;
     // Nothing to do if the directories already match.
     if (sourceDir === localDirectory) {
